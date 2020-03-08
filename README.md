@@ -1,5 +1,7 @@
 # Mp4MetaParser
-Read and write mp4 creation time and modification time
+Support read and write mp4 creation time and modification time.
+You can do this job using may 3rd party libraries, such ffmpeg etc, but the disavantage is that the size of the library is too large.
+If you just want to modify the meta data such creation and modification time of a mp4 file, you can use this, its size is just 11 KB.
 
 # Usage
 ```kotlin
