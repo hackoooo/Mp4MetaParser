@@ -7,7 +7,7 @@ If you just want to modify the meta data such creation and modification time of 
 # Usage
 ```kotlin
 val file = RandomAccessFile(filePath, "rw")
-var mp4Box: Mp4MetaParser.Mp4Box? = null
+var mp4Box: Mp4Box? = null
 try {
   mp4Box = Mp4MetaParser.parse(file)
   Log.e("test", mp4Box.toString())
