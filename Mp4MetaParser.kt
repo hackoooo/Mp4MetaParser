@@ -1,19 +1,17 @@
+package com.wandoujia.base.media
 
-import android.util.Log
 import java.io.IOException
 import java.io.RandomAccessFile
-import java.lang.RuntimeException
-import java.text.SimpleDateFormat
-import kotlin.collections.ArrayList
 
 /**
- * @author maxiaohui https://github.com/hackoooo/Mp4MetaParser
  * Parse and modify mp4 meta data
  * Just support parse and write the creation time and modification time of the mp4 file currently.
- 
+ *
  * @see https://developer.apple.com/library/archive/documentation/QuickTime/QTFF/QTFFChap2/qtff2.html
  * @see https://blog.csdn.net/yefengzhichen/article/details/85562733
  * @see https://download.tsi.telecom-paristech.fr/gpac/mp4box.js/filereader.html
+ *
+ * @author maxiaohui 2020/03/07
  *
  * Usage:
    val file = RandomAccessFile(filePath, "rw")
@@ -25,14 +23,14 @@ import kotlin.collections.ArrayList
      Log.e("test","updating ...")
      mp4Box.updateTime(System.currentTimeMillis()-86400*2000, System.currentTimeMillis()-86400*1000)
      mp4Box.readTime()
-  } catch (e: Exception){
-    // log etc.
-  }
-  finally {
-    mp4Box?.closeQuietly()
-  }
+   } catch (e: Exception){
+     // log etc.
+   }
+   finally {
+     mp4Box?.closeQuietly()
+   }
  */
-class Mp4MetaParser(private val file: RandomAccessFile) {
+open class Mp4MetaParser(private val file: RandomAccessFile) {
 
   companion object{
     private const val TAG = "Mp4MetaParser"
@@ -55,37 +53,16 @@ class Mp4MetaParser(private val file: RandomAccessFile) {
     const val TYPE_MDIA = "mdia"
     const val TYPE_MDHD = "mdhd"
 
-    private val dateFormat = SimpleDateFormat("YYYY-MM-dd HH:m:s")
+//    private val dateFormat = SimpleDateFormat("YYYY-MM-dd HH:m:s")
 
     fun parse(file: RandomAccessFile): Mp4Box {
-      return parse(Mp4MetaParser(file))
-    }
-
-    private fun parse(parser: Mp4MetaParser): Mp4Box {
-      var box = parser.readBox()
-      if (box.type != TYPE_FTYP) {
-        throw Mp4BoxException("this is not a valid mp4 file")
-      }
-      val result = Mp4Box(parser, box)
-
-      while (parser.seekNextBox(box) != OFFSET_OUT_OF_BOUND) {
-        box = parser.readBox()
-        if (box.type == TYPE_MOOV) {
-          result.moovBox = MoovBox.parse(parser, box)
-          break
-        }
-      }
-
-      if (result.moovBox == null) {
-        throw Mp4BoxException("could not find moov box")
-      }
-      return result
+      return Mp4Box.parse(Mp4MetaParser(file))
     }
 
     fun print1904To1970Timestamp(creationTime: Long, modificationTime: Long){
       val createTimestampMills = (creationTime + TIME_STAMP_1904_01) * 1000
       val modificationTimestampMills = (modificationTime + TIME_STAMP_1904_01) * 1000
-      Log.e(TAG, "${dateFormat.format(createTimestampMills)} ${dateFormat.format(modificationTimestampMills)}")
+//      Log.e(TAG, "${dateFormat.format(createTimestampMills)} ${dateFormat.format(modificationTimestampMills)}")
     }
 
     fun change1970To1904Timestamp(timestampMills: Long): Long {
@@ -152,205 +129,5 @@ class Mp4MetaParser(private val file: RandomAccessFile) {
     val box = readMovieHeaderBox(box)
     return MediaHeaderBox(box.creationTime, box.modificationTime, box.size, box.type, box.offset)
   }
-
-  /**
-   * @param size size of this box
-   * @param type type of this box
-   * @param offset offset from the beginning of file
-   */
-  open class Box(val size: Long, val type: String, val offset: Long) {
-    // return the box bound's offset in the file
-    fun boundOffset(): Long {
-      return offset + size
-    }
-  }
-
-  open class MovieHeaderBox(var creationTime: Long,
-                            var modificationTime: Long,
-                            size: Long,
-                            type: String,
-                            offset: Long)
-    : Mp4MetaParser.Box(size, type, offset) {
-    override fun toString(): String {
-      return "MovieHeaderBox: offset:$offset, type:$type, size:$size, " +
-          "creationTime:$creationTime, modificationTime: $modificationTime"
-    }
-  }
-  open class TrackHeaderBox(creationTime: Long,
-                            modificationTime: Long,
-                            size: Long,
-                            type: String,
-                            offset: Long)
-    : MovieHeaderBox(creationTime, modificationTime, size, type, offset) {
-    override fun toString(): String {
-      return "TrackHeaderBox: offset:$offset, type:$type, size:$size, " +
-          "creationTime:$creationTime, modificationTime: $modificationTime"
-    }
-  }
-  open class MediaHeaderBox(creationTime: Long,
-                            modificationTime: Long,
-                            size: Long,
-                            type: String,
-                            offset: Long)
-    : MovieHeaderBox(creationTime, modificationTime, size, type, offset) {
-    override fun toString(): String {
-      return "MediaHeaderBox: offset:$offset, type:$type, size:$size, " +
-          "creationTime:$creationTime, modificationTime: $modificationTime"
-    }
-  }
-
-  open class Mp4Box(val parser: Mp4MetaParser, val container: Box) {
-    lateinit var moovBox: MoovBox
-
-    /**
-     * @param createTimestamp mills since 1970
-     * @param modificationTimestamp mills since 1970
-     */
-    fun updateTime(createTimeMills: Long, modificationTimeMills: Long) {
-      val targetCreateTime = change1970To1904Timestamp(createTimeMills)
-      val targetModificationTime = change1970To1904Timestamp(modificationTimeMills)
-      moovBox.updateTime(parser, targetCreateTime, targetModificationTime)
-    }
-
-    fun readTime(){
-      print1904To1970Timestamp(moovBox.movieHeaderBox.creationTime, moovBox.movieHeaderBox.modificationTime)
-      moovBox.trackBoxList.forEach {
-        print1904To1970Timestamp(it.trackHeaderBox.creationTime, it.trackHeaderBox.modificationTime)
-        print1904To1970Timestamp(it.mediaBox.mediaHeaderBox.creationTime,
-            it.mediaBox.mediaHeaderBox.modificationTime)
-      }
-    }
-
-    fun closeQuietly() {
-      parser.closeQuietly()
-    }
-
-    override fun toString(): String {
-      return """ Mp4Box: offset:${container.offset}, type:${container.type}, size:${container.size}
-        $moovBox
-      """
-    }
-  }
-
-  open class MoovBox(val container: Box) {
-    lateinit var movieHeaderBox: MovieHeaderBox
-    val trackBoxList = ArrayList<TrackBox>()
-
-    companion object{
-      fun parse(parser: Mp4MetaParser, containerBox: Box):MoovBox {
-        val result = MoovBox(containerBox)
-        do {
-          var box = parser.readBox()
-          when(box.type){
-            TYPE_MVHD -> {
-              result.movieHeaderBox = parser.readMovieHeaderBox(box)
-            }
-            TYPE_TRAK -> {
-              result.trackBoxList.add(TrackBox.parse(parser, box))
-            }
-            else -> {
-              //ignored.
-            }
-          }
-        } while (parser.seekNextBox(box, containerBox.boundOffset()) != OFFSET_OUT_OF_BOUND)
-
-        if (null == result.movieHeaderBox) {
-          throw Mp4BoxException("could not find movie header box")
-        }
-        if (result.trackBoxList.isEmpty()){
-          throw Mp4BoxException("could not find track box")
-        }
-        return result
-      }
-    }
-
-    fun updateTime(parser: Mp4MetaParser, createTimestamp: Long, modificationTimestamp: Long) {
-      movieHeaderBox.creationTime = createTimestamp
-      movieHeaderBox.modificationTime = modificationTimestamp
-      parser.writeMovieHeaderBox(movieHeaderBox)
-      trackBoxList.forEach {
-        it.updateTime(parser, createTimestamp, modificationTimestamp)
-      }
-    }
-
-    override fun toString(): String {
-      return """ MoovBox: offset:${container.offset}, type:${container.type}, size:${container.size}
-        $movieHeaderBox
-        $trackBoxList """
-    }
-  }
-
-  open class TrackBox(val container: Box) {
-    lateinit var trackHeaderBox: TrackHeaderBox
-    lateinit var mediaBox: MediaBox
-    companion object{
-      fun parse(parser: Mp4MetaParser, containerBox: Box): TrackBox {
-        val result = TrackBox(containerBox)
-        do {
-          var box = parser.readBox()
-          when (box.type) {
-            TYPE_TKHD -> {
-              result.trackHeaderBox = parser.readTrackHeaderBox(box)
-            }
-            TYPE_MDIA -> {
-              result.mediaBox = MediaBox.parse(parser, box)
-            }
-            else -> {
-              //ignored.
-            }
-          }
-        } while (parser.seekNextBox(box, containerBox.boundOffset()) != OFFSET_OUT_OF_BOUND)
-        if (result.trackHeaderBox == null) {
-          throw Mp4BoxException("could not find track header box")
-        }
-        if (result.mediaBox == null) {
-          throw Mp4BoxException("could not find media box in track")
-        }
-        return result
-      }
-    }
-
-    fun updateTime(parser: Mp4MetaParser, createTimestamp: Long, modificationTimestamp: Long) {
-      trackHeaderBox.creationTime = createTimestamp
-      trackHeaderBox.modificationTime = modificationTimestamp
-      parser.writeMovieHeaderBox(trackHeaderBox)
-
-      mediaBox.mediaHeaderBox.creationTime = createTimestamp
-      mediaBox.mediaHeaderBox.modificationTime = modificationTimestamp
-      parser.writeMovieHeaderBox(mediaBox.mediaHeaderBox)
-    }
-
-    override fun toString(): String {
-      return """ TrackBox: offset:${container.offset}, type:${container.type}, size:${container.size}
-        $trackHeaderBox
-        $mediaBox """
-    }
-  }
-
-  open class MediaBox(val container: Box) {
-    lateinit var mediaHeaderBox: MediaHeaderBox
-    companion object {
-      fun parse(parser: Mp4MetaParser, containerBox: Box): MediaBox {
-        val result = MediaBox(containerBox)
-        do {
-          var box = parser.readBox()
-          if(box.type == TYPE_MDHD){
-            result.mediaHeaderBox = parser.readMediaHeaderBox(box)
-            break
-          }
-        } while (parser.seekNextBox(box, containerBox.boundOffset()) != OFFSET_OUT_OF_BOUND)
-
-        if (result.mediaHeaderBox == null) {
-          throw Mp4BoxException("could not find media header in media box")
-        }
-        return result
-      }
-    }
-    override fun toString(): String {
-      return """ MediaBox: offset:${container.offset}, type:${container.type}, size:${container.size}
-        $mediaHeaderBox """
-    }
-  }
-
-  class Mp4BoxException(message: String?, cause: Throwable? = null) : RuntimeException(message, cause)
 }
+
